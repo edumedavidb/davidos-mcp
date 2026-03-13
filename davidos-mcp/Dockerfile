@@ -2,14 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
+# Install dependencies (paths relative to repo root since that's the build context)
+COPY davidos-mcp/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/ ./app/
-COPY main.py .
-COPY pyproject.toml .
+COPY davidos-mcp/app/ ./app/
+COPY davidos-mcp/main.py .
+COPY davidos-mcp/pyproject.toml .
 
 # Create davidos directory (will be mounted or copied)
 RUN mkdir -p /app/davidos
