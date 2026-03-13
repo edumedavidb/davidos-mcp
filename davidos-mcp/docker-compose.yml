@@ -8,9 +8,6 @@ services:
     container_name: davidos-mcp
     ports:
       - "8000:8000"
-    volumes:
-      # Mount DavidOS content from parent repo
-      - ../davidos:/app/davidos:rw
     environment:
       - DAVIDOS_ROOT=/app/davidos
       - DAVIDOS_HOST=0.0.0.0
