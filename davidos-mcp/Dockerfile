@@ -11,8 +11,8 @@ COPY davidos-mcp/app/ ./app/
 COPY davidos-mcp/main.py .
 COPY davidos-mcp/pyproject.toml .
 
-# Create davidos directory (will be mounted or copied)
-RUN mkdir -p /app/davidos
+# Copy DavidOS content
+COPY davidos-mcp/davidos/ ./davidos/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
