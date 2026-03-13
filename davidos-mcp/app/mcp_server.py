@@ -10,12 +10,6 @@ from pathlib import Path
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
-from mcp.types import (
-    Tool,
-    Resource,
-    TextContent,
-    ResourceContent,
-)
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -222,111 +216,6 @@ async def generate_brief(topic: str, context: str = "") -> str:
     brief_parts.append("- Reference context.md for strategic alignment")
     
     return "\n".join(brief_parts)
-
-
-# === MCP Resources ===
-
-@mcp_server.resource("davidos://context")
-async def resource_context() -> ResourceContent:
-    """Main context document."""
-    content = file_manager.read_file("context.md")
-    return ResourceContent(
-        uri="davidos://context",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://index")
-async def resource_index() -> ResourceContent:
-    """DavidOS index/navigation."""
-    content = file_manager.read_file("index.md")
-    return ResourceContent(
-        uri="davidos://index",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://strategy/vision")
-async def resource_vision() -> ResourceContent:
-    """Product vision document."""
-    content = file_manager.read_file("strategy/product-vision.md")
-    return ResourceContent(
-        uri="davidos://strategy/vision",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://strategy/bets")
-async def resource_bets() -> ResourceContent:
-    """Strategic bets document."""
-    content = file_manager.read_file("strategy/strategic-bets.md")
-    return ResourceContent(
-        uri="davidos://strategy/bets",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://strategy/risks")
-async def resource_risks() -> ResourceContent:
-    """Strategic risks document."""
-    content = file_manager.read_file("strategy/risks.md")
-    return ResourceContent(
-        uri="davidos://strategy/risks",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://strategy/questions")
-async def resource_questions() -> ResourceContent:
-    """Open questions document."""
-    content = file_manager.read_file("strategy/open-questions.md")
-    return ResourceContent(
-        uri="davidos://strategy/questions",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://org/product")
-async def resource_org() -> ResourceContent:
-    """Product organization document."""
-    content = file_manager.read_file("organisation/product-org.md")
-    return ResourceContent(
-        uri="davidos://org/product",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://execution/decisions")
-async def resource_decisions() -> ResourceContent:
-    """Decision log document."""
-    content = file_manager.read_file("execution/decision-log.md")
-    return ResourceContent(
-        uri="davidos://execution/decisions",
-        mimeType="text/markdown",
-        text=content
-    )
-
-
-@mcp_server.resource("davidos://execution/weekly")
-async def resource_weekly() -> ResourceContent:
-    """Weekly notes document."""
-    try:
-        content = file_manager.read_file("execution/weekly-notes.md")
-    except FileNotFoundError:
-        content = "# Weekly Notes\n\nNo entries yet."
-    
-    return ResourceContent(
-        uri="davidos://execution/weekly",
-        mimeType="text/markdown",
-        text=content
-    )
 
 
 # === FastAPI HTTP Server ===

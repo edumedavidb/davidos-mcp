@@ -3,8 +3,8 @@ version: "3.8"
 services:
   davidos-mcp:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../
+      dockerfile: davidos-mcp/Dockerfile
     container_name: davidos-mcp
     ports:
       - "8000:8000"
