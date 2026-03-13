@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  davidos-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: davidos-mcp
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount DavidOS content from parent repo
+      - ../davidos:/app/davidos:rw
+    environment:
+      - DAVIDOS_ROOT=/app/davidos
+      - DAVIDOS_HOST=0.0.0.0
+      - DAVIDOS_PORT=8000
+      - DAVIDOS_LOG_LEVEL=info
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
