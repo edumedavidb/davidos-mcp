@@ -59,6 +59,22 @@ async def logout(request: Request):
 
 # === Public Endpoints ===
 
+@app.get("/")
+async def homepage(request: Request):
+    """Homepage - shows login status."""
+    user = request.session.get('user')
+    if user:
+        return {
+            "status": "authenticated",
+            "user": user.get('email'),
+            "message": "You are logged in. Access /mcp/* endpoints or visit /me for user info."
+        }
+    return {
+        "status": "unauthenticated",
+        "message": "Visit /login to authenticate"
+    }
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
