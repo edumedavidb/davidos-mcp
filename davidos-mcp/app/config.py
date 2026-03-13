@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     # Security
     allow_write: bool = True
     
+    # Google OAuth
+    google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    google_allowed_domain: str = os.getenv("GOOGLE_ALLOWED_DOMAIN", "")
+    session_secret: str = os.getenv("SESSION_SECRET", "dev-secret-change-in-production")
+    
     class Config:
         env_prefix = "DAVIDOS_"
         env_file = ".env"

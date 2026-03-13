@@ -5,12 +5,14 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 import uvicorn
 
 from .config import settings
 from .file_manager import FileManager, FileManagerError, PathTraversalError, FileAccessError
+from . import auth
 
 # Setup logging
 logging.basicConfig(
@@ -25,8 +27,37 @@ file_manager = FileManager()
 # FastAPI application
 app = FastAPI(title="DavidOS MCP Server", version="1.0.0")
 
+# Add session middleware for OAuth
+app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
-# === HTTP Endpoints ===
+
+# === Authentication Endpoints ===
+
+@app.get("/login")
+async def login(request: Request):
+    """Initiate Google OAuth login."""
+    return await auth.login(request)
+
+
+@app.get("/auth/google/callback")
+async def auth_callback(request: Request):
+    """Handle Google OAuth callback."""
+    return await auth.auth_callback(request)
+
+
+@app.get("/me")
+async def get_me(request: Request, user: dict = Depends(auth.get_current_user)):
+    """Get current authenticated user."""
+    return await auth.get_me(request, user)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    """Logout current user."""
+    return await auth.logout(request)
+
+
+# === Public Endpoints ===
 
 @app.get("/health")
 async def health_check():
@@ -34,16 +65,20 @@ async def health_check():
     return {"status": "ok", "server": "davidos-mcp", "version": "1.0.0"}
 
 
-@app.get("/files")
-async def http_list_files():
-    """HTTP endpoint to list files."""
+# === Protected MCP Endpoints ===
+
+@app.get("/mcp/files")
+async def http_list_files(user: dict = Depends(auth.get_current_user)):
+    """HTTP endpoint to list files. Requires authentication."""
+    logger.info(f"User {user['email']} listing files")
     return file_manager.list_files()
 
 
-@app.post("/read")
-async def http_read_file(path: str):
-    """HTTP endpoint to read a file."""
+@app.post("/mcp/read")
+async def http_read_file(path: str, user: dict = Depends(auth.get_current_user)):
+    """HTTP endpoint to read a file. Requires authentication."""
     try:
+        logger.info(f"User {user['email']} reading file: {path}")
         content = file_manager.read_file(path)
         return {"path": path, "content": content}
     except FileManagerError as e:
@@ -52,16 +87,18 @@ async def http_read_file(path: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@app.post("/search")
-async def http_search(query: str):
-    """HTTP endpoint to search."""
+@app.post("/mcp/search")
+async def http_search(query: str, user: dict = Depends(auth.get_current_user)):
+    """HTTP endpoint to search. Requires authentication."""
+    logger.info(f"User {user['email']} searching: {query}")
     return file_manager.search_files(query)
 
 
-@app.post("/append/question")
-async def http_append_question(question: str, category: str = "General"):
-    """Append a new open question."""
+@app.post("/mcp/append/question")
+async def http_append_question(question: str, category: str = "General", user: dict = Depends(auth.get_current_user)):
+    """Append a new open question. Requires authentication."""
     try:
+        logger.info(f"User {user['email']} appending question to category: {category}")
         timestamp = datetime.now().isoformat()
         entry = f"\n## {category} - {timestamp}\n\n{question}\n"
         file_manager.append_to_file("strategy/open-questions.md", entry)
@@ -70,16 +107,18 @@ async def http_append_question(question: str, category: str = "General"):
         raise HTTPException(status_code=403, detail=str(e))
 
 
-@app.post("/append/decision")
+@app.post("/mcp/append/decision")
 async def http_append_decision(
     context: str,
     decision: str,
     options_considered: list[str] = None,
     implications: str = "",
-    review_date: str = ""
+    review_date: str = "",
+    user: dict = Depends(auth.get_current_user)
 ):
-    """Append a structured decision to the decision log."""
+    """Append a structured decision to the decision log. Requires authentication."""
     try:
+        logger.info(f"User {user['email']} appending decision")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         
         entry = f"""
@@ -115,10 +154,11 @@ async def http_append_decision(
         raise HTTPException(status_code=403, detail=str(e))
 
 
-@app.post("/append/weekly")
-async def http_append_weekly(note: str, week_date: str = None):
-    """Append a note to the weekly review file."""
+@app.post("/mcp/append/weekly")
+async def http_append_weekly(note: str, week_date: str = None, user: dict = Depends(auth.get_current_user)):
+    """Append a note to the weekly review file. Requires authentication."""
     try:
+        logger.info(f"User {user['email']} appending weekly note")
         if week_date is None:
             week_date = datetime.now().strftime("%Y-W%U")
         
@@ -140,10 +180,11 @@ async def http_append_weekly(note: str, week_date: str = None):
         raise HTTPException(status_code=403, detail=str(e))
 
 
-@app.post("/update/section")
-async def http_update_section(file: str, section_heading: str, content: str):
-    """Update a markdown section in a DavidOS file."""
+@app.post("/mcp/update/section")
+async def http_update_section(file: str, section_heading: str, content: str, user: dict = Depends(auth.get_current_user)):
+    """Update a markdown section in a DavidOS file. Requires authentication."""
     try:
+        logger.info(f"User {user['email']} updating section '{section_heading}' in {file}")
         file_manager.update_section(file, section_heading, content)
         return {"status": "success", "message": f"Updated section '{section_heading}' in {file}"}
     except FileManagerError as e:
