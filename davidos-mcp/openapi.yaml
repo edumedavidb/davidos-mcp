@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: DavidOS MCP API
+  description: Strategic context and decision management for product leadership
+  version: 1.0.0
+servers:
+  - url: https://davidos-mcp-production.up.railway.app
+    description: Production server
+
+paths:
+  /mcp/files:
+    get:
+      operationId: listFiles
+      summary: List all DavidOS files
+      description: Returns metadata for all available strategic documents
+      responses:
+        '200':
+          description: List of files with metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    path:
+                      type: string
+                    exists:
+                      type: boolean
+                    size:
+                      type: integer
+                    modified:
+                      type: string
+
+  /mcp/read:
+    post:
+      operationId: readFile
+      summary: Read a DavidOS file
+      description: Read the contents of a strategic document
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+          description: File path (e.g., "context.md", "strategy/risks.md")
+      responses:
+        '200':
+          description: File contents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  content:
+                    type: string
+
+  /mcp/search:
+    post:
+      operationId: searchFiles
+      summary: Search across DavidOS content
+      description: Search for text across all strategic documents
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /mcp/append/question:
+    post:
+      operationId: appendQuestion
+      summary: Add an open question
+      description: Append a new strategic question to open-questions.md
+      parameters:
+        - name: question
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The question to add
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            default: General
+          description: Category for the question
+      responses:
+        '200':
+          description: Question added successfully
+
+  /mcp/append/decision:
+    post:
+      operationId: appendDecision
+      summary: Record a decision
+      description: Append a structured decision to the decision log
+      parameters:
+        - name: context
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Background and circumstances
+        - name: decision
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The decision made
+        - name: implications
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Expected outcomes and tradeoffs
+        - name: review_date
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional date to review this decision
+      responses:
+        '200':
+          description: Decision recorded successfully
+
+  /mcp/append/weekly:
+    post:
+      operationId: appendWeeklyNote
+      summary: Add a weekly note
+      description: Append a note to the weekly review file
+      parameters:
+        - name: note
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The note content
+        - name: week_date
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Week identifier (defaults to current week)
+      responses:
+        '200':
+          description: Note added successfully
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://davidos-mcp-production.up.railway.app/login
+          tokenUrl: https://davidos-mcp-production.up.railway.app/auth/google/callback
+          scopes:
+            openid: OpenID Connect
+            email: Email address
+            profile: User profile
+
+security:
+  - OAuth2: [openid, email, profile]

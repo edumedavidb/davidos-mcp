@@ -13,6 +13,8 @@ import uvicorn
 from .config import settings
 from .file_manager import FileManager, FileManagerError, PathTraversalError, FileAccessError
 from . import auth
+from . import mcp_protocol
+from . import mcp_init
 
 # Setup logging
 logging.basicConfig(
@@ -29,6 +31,9 @@ app = FastAPI(title="DavidOS MCP Server", version="1.0.0")
 
 # Add session middleware for OAuth
 app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+
+# Initialize MCP tools and resources
+mcp_init.initialize_mcp()
 
 
 # === Authentication Endpoints ===
@@ -79,6 +84,30 @@ async def homepage(request: Request):
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "server": "davidos-mcp", "version": "1.0.0"}
+
+
+@app.post("/mcp")
+async def mcp_endpoint(request: Request, user: dict = Depends(auth.get_current_user)):
+    """MCP protocol endpoint - handles all MCP method calls."""
+    try:
+        payload = await request.json()
+        
+        method = payload.get("method")
+        params = payload.get("params", {})
+        
+        logger.info(f"MCP request from {user['email']}: method={method}")
+        
+        # Route to MCP protocol handler
+        result = mcp_protocol.handle_mcp_request(method, params)
+        
+        return result
+        
+    except ValueError as e:
+        logger.error(f"MCP protocol error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"MCP endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # === Protected MCP Endpoints ===
