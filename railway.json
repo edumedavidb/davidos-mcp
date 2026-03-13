@@ -5,7 +5,7 @@
     "dockerfilePath": "davidos-mcp/Dockerfile"
   },
   "deploy": {
-    "startCommand": "cd davidos-mcp && python -m uvicorn app.mcp_server:app --host 0.0.0.0 --port 8000",
+    "startCommand": "python -m uvicorn app.mcp_server:app --host 0.0.0.0 --port 8000",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 10,
     "restartPolicyType": "ON_FAILURE",
