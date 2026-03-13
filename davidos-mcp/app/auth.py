@@ -15,7 +15,11 @@ logger = logging.getLogger("davidos-mcp")
 # OAuth configuration
 oauth = OAuth()
 
+# Log OAuth configuration status
+logger.info(f"Initializing OAuth - Client ID present: {bool(settings.google_client_id)}, Client Secret present: {bool(settings.google_client_secret)}")
+
 if settings.google_client_id and settings.google_client_secret:
+    logger.info("Registering Google OAuth client")
     oauth.register(
         name='google',
         client_id=settings.google_client_id,
@@ -27,6 +31,9 @@ if settings.google_client_id and settings.google_client_secret:
             'prompt': 'consent'
         }
     )
+    logger.info("Google OAuth client registered successfully")
+else:
+    logger.warning("OAuth not configured - GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing")
 
 
 def get_current_user(request: Request) -> dict:
@@ -56,8 +63,12 @@ async def login(request: Request):
     if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="OAuth not configured")
     
-    # Build redirect URI
+    # Build redirect URI - force HTTPS for Railway
     redirect_uri = str(request.url_for('auth_callback'))
+    if redirect_uri.startswith('http://'):
+        redirect_uri = redirect_uri.replace('http://', 'https://', 1)
+    
+    logger.info(f"OAuth redirect URI: {redirect_uri}")
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
