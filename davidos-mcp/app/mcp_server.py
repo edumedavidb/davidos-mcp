@@ -302,13 +302,21 @@ async def oauth_token(request: Request):
         access_token = secrets.token_urlsafe(32)
         refresh_token = secrets.token_urlsafe(32)
         
+        # Store in both _access_tokens (for Bearer auth) and session (for persistence)
         _access_tokens[access_token] = {
             'user': auth_data['user'],
             'scope': auth_data['scope'],
             'client_id': client_id
         }
         
+        # CRITICAL: Also store user in session so ChatGPT can use session cookies
+        # This persists across server restarts via Railway's session storage
+        request.session['user'] = auth_data['user']
+        request.session['oauth_client_id'] = client_id
+        request.session['oauth_scope'] = auth_data['scope']
+        
         logger.info(f"Created access token for user {auth_data['user']['email']}: {access_token[:10]}...")
+        logger.info(f"Stored user in session for persistent auth")
         logger.info(f"Total access tokens in memory: {len(_access_tokens)}")
         
         return {
