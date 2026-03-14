@@ -2,7 +2,7 @@
 
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Depends, Request
@@ -15,10 +15,7 @@ from .file_manager import FileManager, FileManagerError, PathTraversalError, Fil
 from . import auth
 from . import mcp_protocol
 from . import mcp_init
-
-# OAuth state storage (in production, use Redis or database)
-_auth_codes = {}
-_access_tokens = {}
+from . import token_storage
 
 # OAuth client credentials for ChatGPT
 CHATGPT_CLIENT_ID = "davidos-mcp-chatgpt-client"
@@ -220,13 +217,15 @@ async def oauth_authorize(
         logger.info(f"User already authenticated: {user.get('email')}, generating auth code")
         auth_code = secrets.token_urlsafe(32)
         
-        _auth_codes[auth_code] = {
+        # Store auth code in persistent storage
+        token_storage.store_auth_code(auth_code, {
             'user': user,
             'client_id': client_id,
             'redirect_uri': redirect_uri,
             'scope': scope,
-            'code_challenge': code_challenge
-        }
+            'code_challenge': code_challenge,
+            'expires_at': datetime.now().timestamp() * 1000 + 600000  # 10 minutes
+        })
         
         redirect_url = f"{redirect_uri}?code={auth_code}"
         if state:
@@ -282,13 +281,15 @@ async def oauth_token(request: Request):
     #     )
     
     if grant_type == "authorization_code":
-        if code not in _auth_codes:
+        # Get auth code from persistent storage
+        auth_data = token_storage.get_auth_code(code)
+        
+        if not auth_data:
+            logger.warning(f"Invalid or expired authorization code: {code[:10]}...")
             return JSONResponse(
                 status_code=400,
                 content={"error": "invalid_grant", "error_description": "Invalid authorization code"}
             )
-        
-        auth_data = _auth_codes.pop(code)
         
         if auth_data.get('code_challenge'):
             if not code_verifier:
@@ -309,23 +310,22 @@ async def oauth_token(request: Request):
         access_token = secrets.token_urlsafe(32)
         refresh_token = secrets.token_urlsafe(32)
         
-        # Store in both _access_tokens (for Bearer auth) and session (for persistence)
-        _access_tokens[access_token] = {
-            'user': auth_data['user'],
-            'scope': auth_data['scope'],
-            'client_id': client_id
-        }
+        # Store access token in persistent file storage
+        token_storage.store_access_token(
+            access_token,
+            auth_data['user'],
+            auth_data['scope'],
+            client_id,
+            expires_in=3600
+        )
         
-        # CRITICAL: Also store user in session so ChatGPT can use session cookies
-        # This persists across server restarts via Railway's session storage
+        # Also store user in session as backup
         request.session['user'] = auth_data['user']
         request.session['oauth_client_id'] = client_id
         request.session['oauth_scope'] = auth_data['scope']
         
-        logger.info(f"Created access token for user {auth_data['user']['email']}: {access_token[:10]}...")
-        logger.info(f"Stored user in session for persistent auth")
-        logger.info(f"Total access tokens in memory: {len(_access_tokens)}")
-        logger.info(f"Session ID: {request.session.get('_id', 'no-id')}")
+        logger.info(f"Created and stored access token for user {auth_data['user']['email']}: {access_token[:10]}...")
+        logger.info(f"Token stored in persistent file storage")
         
         # Return token response with session cookie in headers
         response = JSONResponse({
@@ -598,13 +598,15 @@ async def handle_mcp_request(request: Request):
     if auth_header.startswith('Bearer '):
         access_token = auth_header[7:]
         logger.info(f"MCP request with Bearer token: {access_token[:10]}...")
-        logger.info(f"Available tokens in memory: {len(_access_tokens)}")
-        if access_token in _access_tokens:
-            token_data = _access_tokens[access_token]
+        
+        # Get token from persistent storage
+        token_data = token_storage.get_access_token(access_token)
+        
+        if token_data:
             user = token_data['user']
             logger.info(f"Token validated for user: {user['email']}")
         else:
-            logger.warning(f"Token not found in _access_tokens. Token: {access_token[:10]}..., Available: {list(_access_tokens.keys())[:3]}")
+            logger.warning(f"Token not found or expired: {access_token[:10]}...")
     
     # Fall back to session auth
     if not user:
