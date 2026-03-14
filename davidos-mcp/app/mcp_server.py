@@ -37,8 +37,15 @@ file_manager = FileManager()
 # FastAPI application
 app = FastAPI(title="DavidOS MCP Server", version="1.0.0")
 
-# Add session middleware for OAuth
-app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+# Add session middleware for OAuth with proper cookie settings
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie="davidos_session",
+    max_age=3600 * 24,  # 24 hours
+    same_site="none",  # Allow cross-site requests from ChatGPT
+    https_only=True  # Require HTTPS
+)
 
 # Initialize MCP tools and resources
 mcp_init.initialize_mcp()
@@ -318,14 +325,29 @@ async def oauth_token(request: Request):
         logger.info(f"Created access token for user {auth_data['user']['email']}: {access_token[:10]}...")
         logger.info(f"Stored user in session for persistent auth")
         logger.info(f"Total access tokens in memory: {len(_access_tokens)}")
+        logger.info(f"Session ID: {request.session.get('_id', 'no-id')}")
         
-        return {
+        # Return token response with session cookie in headers
+        response = JSONResponse({
             "access_token": access_token,
             "token_type": "Bearer",
             "expires_in": 3600,
             "refresh_token": refresh_token,
             "scope": auth_data['scope']
-        }
+        })
+        
+        # Explicitly set session cookie in response
+        # This ensures ChatGPT's HTTP client receives and stores the cookie
+        response.set_cookie(
+            key="davidos_session",
+            value=request.cookies.get("davidos_session", ""),
+            max_age=3600 * 24,
+            secure=True,
+            httponly=True,
+            samesite="none"
+        )
+        
+        return response
     
     return JSONResponse(
         status_code=400,
