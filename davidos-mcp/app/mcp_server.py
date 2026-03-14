@@ -188,8 +188,11 @@ async def oauth_authorize(
     """OAuth authorization endpoint - redirects to Google login."""
     import secrets
     
-    if client_id != CHATGPT_CLIENT_ID:
-        raise HTTPException(status_code=400, detail="Invalid client_id")
+    logger.info(f"OAuth authorize request - client_id: {client_id}, redirect_uri: {redirect_uri}")
+    
+    # Accept any client_id for now (can restrict later)
+    # if client_id != CHATGPT_CLIENT_ID:
+    #     raise HTTPException(status_code=400, detail="Invalid client_id")
     
     user = request.session.get('user')
     
@@ -237,17 +240,20 @@ async def oauth_token(
     import hashlib
     import base64
     
-    if client_id != CHATGPT_CLIENT_ID:
-        return JSONResponse(
-            status_code=401,
-            content={"error": "invalid_client", "error_description": "Invalid client credentials"}
-        )
+    logger.info(f"OAuth token request - client_id: {client_id}, grant_type: {grant_type}")
     
-    if client_secret and client_secret != CHATGPT_CLIENT_SECRET:
-        return JSONResponse(
-            status_code=401,
-            content={"error": "invalid_client", "error_description": "Invalid client credentials"}
-        )
+    # Accept any client_id for now (can restrict later)
+    # if client_id != CHATGPT_CLIENT_ID:
+    #     return JSONResponse(
+    #         status_code=401,
+    #         content={"error": "invalid_client", "error_description": "Invalid client credentials"}
+    #     )
+    # 
+    # if client_secret and client_secret != CHATGPT_CLIENT_SECRET:
+    #     return JSONResponse(
+    #         status_code=401,
+    #         content={"error": "invalid_client", "error_description": "Invalid client credentials"}
+    #     )
     
     if grant_type == "authorization_code":
         if code not in _auth_codes:
