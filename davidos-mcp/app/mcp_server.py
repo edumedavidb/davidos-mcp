@@ -577,8 +577,19 @@ async def terms_of_service():
     return HTMLResponse(content=html)
 
 
+@app.post("/")
+async def mcp_endpoint_root(request: Request):
+    """MCP protocol endpoint at root path (ChatGPT standard)."""
+    return await handle_mcp_request(request)
+
+
 @app.post("/mcp")
 async def mcp_endpoint(request: Request):
+    """MCP protocol endpoint (legacy path)."""
+    return await handle_mcp_request(request)
+
+
+async def handle_mcp_request(request: Request):
     """MCP protocol endpoint - handles all MCP method calls."""
     # Check for Bearer token first (OAuth flow)
     auth_header = request.headers.get('Authorization', '')
