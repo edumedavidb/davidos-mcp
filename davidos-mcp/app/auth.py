@@ -115,19 +115,17 @@ async def auth_callback(request: Request):
         # Clear OAuth params
         request.session.pop('oauth_params')
         
-        # Generate authorization code
-        import secrets
-        auth_code = secrets.token_urlsafe(32)
-        
-        # Import the auth codes dict from mcp_server
-        from . import mcp_server
-        mcp_server._auth_codes[auth_code] = {
-            'user': request.session['user'],
-            'client_id': oauth_params['client_id'],
-            'redirect_uri': oauth_params['redirect_uri'],
-            'scope': oauth_params['scope'],
-            'code_challenge': oauth_params.get('code_challenge', '')
-        }
+        # Generate authorization code using protocol module
+        from . import oauth_protocol
+        auth_code = oauth_protocol.create_authorization_code(
+            client_id=oauth_params['client_id'],
+            redirect_uri=oauth_params['redirect_uri'],
+            scope=oauth_params['scope'],
+            user=request.session['user'],
+            code_challenge=oauth_params.get('code_challenge', ''),
+            code_challenge_method=oauth_params.get('code_challenge_method', 'S256'),
+            resource=oauth_params.get('resource')  # Include resource parameter
+        )
         
         # Redirect back to ChatGPT
         redirect_url = f"{oauth_params['redirect_uri']}?code={auth_code}"

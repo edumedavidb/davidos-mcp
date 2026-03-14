@@ -15,7 +15,7 @@ from .file_manager import FileManager, FileManagerError, PathTraversalError, Fil
 from . import auth
 from . import mcp_protocol
 from . import mcp_init
-from . import token_storage
+from . import oauth_protocol
 
 # OAuth client credentials for ChatGPT
 CHATGPT_CLIENT_ID = "davidos-mcp-chatgpt-client"
@@ -122,58 +122,48 @@ async def test_page():
 
 @app.get("/.well-known/oauth-protected-resource")
 async def oauth_protected_resource_metadata():
-    """MCP OAuth 2.1 Protected Resource Metadata (RFC 9728)."""
-    return {
-        "resource": "https://davidos-mcp-production.up.railway.app/mcp",
-        "authorization_servers": ["https://davidos-mcp-production.up.railway.app"],
-        "scopes_supported": ["mcp:tools", "mcp:resources", "mcp:prompts", "openid", "email", "profile"],
-        "bearer_methods_supported": ["header"]
-    }
+    """OAuth 2.0 Protected Resource Metadata (RFC 9728) - STEP 1."""
+    return oauth_protocol.get_protected_resource_metadata()
 
 
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server_metadata():
-    """OAuth 2.0 Authorization Server Metadata (RFC 8414)."""
-    return {
-        "issuer": "https://davidos-mcp-production.up.railway.app",
-        "authorization_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/authorize",
-        "token_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/token",
-        "userinfo_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/userinfo",
-        "jwks_uri": "https://davidos-mcp-production.up.railway.app/.well-known/jwks.json",
-        "scopes_supported": ["mcp:tools", "mcp:resources", "mcp:prompts", "openid", "email", "profile"],
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
-        "code_challenge_methods_supported": ["S256"],
-        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
-        "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"],
-        "client_id_metadata_document_supported": True
-    }
+    """OAuth 2.0 Authorization Server Metadata (RFC 8414) - STEP 1."""
+    return oauth_protocol.get_authorization_server_metadata()
 
 
 @app.get("/.well-known/openid-configuration")
 async def openid_configuration():
-    """OpenID Connect Discovery (OIDC)."""
-    return {
-        "issuer": "https://davidos-mcp-production.up.railway.app",
-        "authorization_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/authorize",
-        "token_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/token",
-        "userinfo_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/userinfo",
-        "jwks_uri": "https://davidos-mcp-production.up.railway.app/.well-known/jwks.json",
-        "scopes_supported": ["openid", "email", "profile", "mcp:tools", "mcp:resources", "mcp:prompts"],
-        "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
-        "subject_types_supported": ["public"],
+    """OpenID Connect Discovery (optional, for compatibility)."""
+    metadata = oauth_protocol.get_authorization_server_metadata()
+    # Add OIDC-specific fields
+    metadata.update({
         "id_token_signing_alg_values_supported": ["RS256"],
         "claims_supported": ["sub", "email", "email_verified", "name", "picture"],
-        "client_id_metadata_document_supported": True
-    }
+        "jwks_uri": f"{oauth_protocol.BASE_URL}/.well-known/jwks.json"
+    })
+    return metadata
 
 
 @app.get("/.well-known/jwks.json")
 async def jwks():
-    """JSON Web Key Set (for OIDC)."""
+    """JSON Web Key Set (placeholder for future JWT support)."""
     return {"keys": []}
+
+
+@app.post("/oauth/register")
+async def oauth_register(request: Request):
+    """Dynamic Client Registration (RFC 7591) - STEP 2."""
+    try:
+        registration_data = await request.json()
+        client_info = oauth_protocol.register_client(registration_data)
+        return JSONResponse(status_code=201, content=client_info)
+    except Exception as e:
+        logger.error(f"Client registration error: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_client_metadata", "error_description": str(e)}
+        )
 
 
 # === OAuth Flow Endpoints ===
@@ -187,22 +177,22 @@ async def oauth_authorize(
     scope: str = "",
     state: str = "",
     code_challenge: str = "",
-    code_challenge_method: str = ""
+    code_challenge_method: str = "",
+    resource: str = ""  # CRITICAL: ChatGPT sends resource parameter
 ):
-    """OAuth authorization endpoint - redirects to Google login."""
-    import secrets
-    
+    """OAuth Authorization Endpoint (PKCE) - STEP 3."""
     try:
-        logger.info(f"OAuth authorize request - client_id: {client_id}, redirect_uri: {redirect_uri}, scope: {scope}")
-        
-        # Accept any client_id for now (can restrict later)
-        # if client_id != CHATGPT_CLIENT_ID:
-        #     raise HTTPException(status_code=400, detail="Invalid client_id")
+        # Validate client (check if registered via DCR)
+        client = oauth_protocol.get_client(client_id)
+        if not client:
+            logger.warning(f"Unknown client_id: {client_id}")
+            # For backward compatibility, allow unregistered clients
+            # In production, you might want to reject these
         
         user = request.session.get('user')
         
         if not user:
-            logger.info("No user session found, storing OAuth params and redirecting to Google login")
+            # Store OAuth params and redirect to Google login
             request.session['oauth_params'] = {
                 'response_type': response_type,
                 'client_id': client_id,
@@ -210,28 +200,26 @@ async def oauth_authorize(
                 'scope': scope,
                 'state': state,
                 'code_challenge': code_challenge,
-                'code_challenge_method': code_challenge_method
+                'code_challenge_method': code_challenge_method,
+                'resource': resource  # Store resource parameter
             }
             return await auth.login(request)
         
-        logger.info(f"User already authenticated: {user.get('email')}, generating auth code")
-        auth_code = secrets.token_urlsafe(32)
-        
-        # Store auth code in persistent storage
-        token_storage.store_auth_code(auth_code, {
-            'user': user,
-            'client_id': client_id,
-            'redirect_uri': redirect_uri,
-            'scope': scope,
-            'code_challenge': code_challenge,
-            'expires_at': datetime.now().timestamp() * 1000 + 600000  # 10 minutes
-        })
+        # User authenticated - create authorization code
+        auth_code = oauth_protocol.create_authorization_code(
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            scope=scope,
+            user=user,
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method,
+            resource=resource  # Pass resource to become aud claim
+        )
         
         redirect_url = f"{redirect_uri}?code={auth_code}"
         if state:
             redirect_url += f"&state={state}"
         
-        logger.info(f"Redirecting to: {redirect_url}")
         return RedirectResponse(url=redirect_url)
         
     except Exception as e:
@@ -241,11 +229,7 @@ async def oauth_authorize(
 
 @app.post("/oauth/token")
 async def oauth_token(request: Request):
-    """OAuth token endpoint."""
-    import secrets
-    import hashlib
-    import base64
-    
+    """OAuth Token Endpoint - STEP 4."""
     # Parse form data (ChatGPT sends application/x-www-form-urlencoded)
     try:
         form_data = await request.form()
@@ -264,32 +248,17 @@ async def oauth_token(request: Request):
         client_secret = request.query_params.get("client_secret", "")
         code_verifier = request.query_params.get("code_verifier", "")
     
-    logger.info(f"OAuth token request - grant_type: {grant_type}, client_id: {client_id}, code: {code[:10] if code else 'none'}..., code_verifier present: {bool(code_verifier)}")
-    
-    # Accept any client_id for now (can restrict later)
-    # if client_id != CHATGPT_CLIENT_ID:
-    #     return JSONResponse(
-    #         status_code=401,
-    #         content={"error": "invalid_client", "error_description": "Invalid client credentials"}
-    #     )
-    # 
-    # if client_secret and client_secret != CHATGPT_CLIENT_SECRET:
-    #     return JSONResponse(
-    #         status_code=401,
-    #         content={"error": "invalid_client", "error_description": "Invalid client credentials"}
-    #     )
-    
     if grant_type == "authorization_code":
-        # Get auth code from persistent storage
-        auth_data = token_storage.get_auth_code(code)
+        # Consume authorization code (one-time use)
+        auth_data = oauth_protocol.consume_authorization_code(code)
         
         if not auth_data:
-            logger.warning(f"Invalid or expired authorization code: {code[:10]}...")
             return JSONResponse(
                 status_code=400,
-                content={"error": "invalid_grant", "error_description": "Invalid authorization code"}
+                content={"error": "invalid_grant", "error_description": "Invalid or expired authorization code"}
             )
         
+        # Verify PKCE
         if auth_data.get('code_challenge'):
             if not code_verifier:
                 return JSONResponse(
@@ -297,56 +266,26 @@ async def oauth_token(request: Request):
                     content={"error": "invalid_request", "error_description": "code_verifier required"}
                 )
             
-            verifier_hash = hashlib.sha256(code_verifier.encode()).digest()
-            verifier_challenge = base64.urlsafe_b64encode(verifier_hash).decode().rstrip('=')
-            
-            if verifier_challenge != auth_data['code_challenge']:
+            if not oauth_protocol.verify_pkce(code_verifier, auth_data['code_challenge']):
                 return JSONResponse(
                     status_code=400,
                     content={"error": "invalid_grant", "error_description": "Invalid code_verifier"}
                 )
         
-        access_token = secrets.token_urlsafe(32)
-        refresh_token = secrets.token_urlsafe(32)
-        
-        # Store access token in persistent file storage
-        token_storage.store_access_token(
-            access_token,
-            auth_data['user'],
-            auth_data['scope'],
-            client_id,
-            expires_in=3600
+        # Create access token with proper audience claim
+        token_response = oauth_protocol.create_access_token(
+            client_id=client_id,
+            user=auth_data['user'],
+            scope=auth_data['scope'],
+            resource=auth_data.get('resource')  # Becomes aud claim
         )
         
-        # Also store user in session as backup
+        # Store user in session as backup
         request.session['user'] = auth_data['user']
         request.session['oauth_client_id'] = client_id
         request.session['oauth_scope'] = auth_data['scope']
         
-        logger.info(f"Created and stored access token for user {auth_data['user']['email']}: {access_token[:10]}...")
-        logger.info(f"Token stored in persistent file storage")
-        
-        # Return token response with session cookie in headers
-        response = JSONResponse({
-            "access_token": access_token,
-            "token_type": "Bearer",
-            "expires_in": 3600,
-            "refresh_token": refresh_token,
-            "scope": auth_data['scope']
-        })
-        
-        # Explicitly set session cookie in response
-        # This ensures ChatGPT's HTTP client receives and stores the cookie
-        response.set_cookie(
-            key="davidos_session",
-            value=request.cookies.get("davidos_session", ""),
-            max_age=3600 * 24,
-            secure=True,
-            httponly=True,
-            samesite="none"
-        )
-        
-        return response
+        return JSONResponse(token_response)
     
     return JSONResponse(
         status_code=400,
@@ -596,28 +535,25 @@ async def handle_mcp_request(request: Request):
     
     if auth_header.startswith('Bearer '):
         access_token = auth_header[7:]
-        logger.info(f"MCP request with Bearer token: {access_token[:10]}...")
         
-        # Get token from persistent storage
-        token_data = token_storage.get_access_token(access_token)
+        # Validate token using protocol module - STEP 5
+        token_data = oauth_protocol.validate_access_token(access_token)
         
         if token_data:
             user = token_data['user']
-            logger.info(f"Token validated for user: {user['email']}")
         else:
-            logger.warning(f"Token not found or expired: {access_token[:10]}...")
+            logger.warning(f"Token validation failed: {access_token[:10]}...")
     
     # Fall back to session auth
     if not user:
         user = request.session.get('user')
     
     if not user:
-        logger.warning(f"MCP request rejected - no valid user. Auth header present: {bool(auth_header)}, Session user: {bool(request.session.get('user'))}")
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
             headers={
-                "WWW-Authenticate": 'Bearer realm="mcp", resource_metadata="https://davidos-mcp-production.up.railway.app/.well-known/oauth-protected-resource"'
+                "WWW-Authenticate": f'Bearer realm="mcp", resource_metadata="{oauth_protocol.BASE_URL}/.well-known/oauth-protected-resource"'
             }
         )
     
