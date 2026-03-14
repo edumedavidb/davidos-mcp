@@ -234,21 +234,32 @@ async def oauth_authorize(
 
 
 @app.post("/oauth/token")
-async def oauth_token(
-    request: Request,
-    grant_type: str = "",
-    code: str = "",
-    redirect_uri: str = "",
-    client_id: str = "",
-    client_secret: str = "",
-    code_verifier: str = ""
-):
+async def oauth_token(request: Request):
     """OAuth token endpoint."""
     import secrets
     import hashlib
     import base64
     
-    logger.info(f"OAuth token request - client_id: {client_id}, grant_type: {grant_type}")
+    # Parse form data (ChatGPT sends application/x-www-form-urlencoded)
+    try:
+        form_data = await request.form()
+        grant_type = form_data.get("grant_type", "")
+        code = form_data.get("code", "")
+        redirect_uri = form_data.get("redirect_uri", "")
+        client_id = form_data.get("client_id", "")
+        client_secret = form_data.get("client_secret", "")
+        code_verifier = form_data.get("code_verifier", "")
+    except:
+        # Fallback to query params if form parsing fails
+        grant_type = request.query_params.get("grant_type", "")
+        code = request.query_params.get("code", "")
+        redirect_uri = request.query_params.get("redirect_uri", "")
+        client_id = request.query_params.get("client_id", "")
+        client_secret = request.query_params.get("client_secret", "")
+        code_verifier = request.query_params.get("code_verifier", "")
+    
+    logger.info(f"OAuth token request - grant_type: {grant_type}, client_id: {client_id}, code: {code[:10]}..., code_verifier present: {bool(code_verifier)}")
+    logger.info(f"Available auth codes: {list(_auth_codes.keys())[:3]}...")
     
     # Accept any client_id for now (can restrict later)
     # if client_id != CHATGPT_CLIENT_ID:
