@@ -188,41 +188,49 @@ async def oauth_authorize(
     """OAuth authorization endpoint - redirects to Google login."""
     import secrets
     
-    logger.info(f"OAuth authorize request - client_id: {client_id}, redirect_uri: {redirect_uri}")
-    
-    # Accept any client_id for now (can restrict later)
-    # if client_id != CHATGPT_CLIENT_ID:
-    #     raise HTTPException(status_code=400, detail="Invalid client_id")
-    
-    user = request.session.get('user')
-    
-    if not user:
-        request.session['oauth_params'] = {
-            'response_type': response_type,
+    try:
+        logger.info(f"OAuth authorize request - client_id: {client_id}, redirect_uri: {redirect_uri}, scope: {scope}")
+        
+        # Accept any client_id for now (can restrict later)
+        # if client_id != CHATGPT_CLIENT_ID:
+        #     raise HTTPException(status_code=400, detail="Invalid client_id")
+        
+        user = request.session.get('user')
+        
+        if not user:
+            logger.info("No user session found, storing OAuth params and redirecting to Google login")
+            request.session['oauth_params'] = {
+                'response_type': response_type,
+                'client_id': client_id,
+                'redirect_uri': redirect_uri,
+                'scope': scope,
+                'state': state,
+                'code_challenge': code_challenge,
+                'code_challenge_method': code_challenge_method
+            }
+            return await auth.login(request)
+        
+        logger.info(f"User already authenticated: {user.get('email')}, generating auth code")
+        auth_code = secrets.token_urlsafe(32)
+        
+        _auth_codes[auth_code] = {
+            'user': user,
             'client_id': client_id,
             'redirect_uri': redirect_uri,
             'scope': scope,
-            'state': state,
-            'code_challenge': code_challenge,
-            'code_challenge_method': code_challenge_method
+            'code_challenge': code_challenge
         }
-        return await auth.login(request)
-    
-    auth_code = secrets.token_urlsafe(32)
-    
-    _auth_codes[auth_code] = {
-        'user': user,
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
-        'scope': scope,
-        'code_challenge': code_challenge
-    }
-    
-    redirect_url = f"{redirect_uri}?code={auth_code}"
-    if state:
-        redirect_url += f"&state={state}"
-    
-    return RedirectResponse(url=redirect_url)
+        
+        redirect_url = f"{redirect_uri}?code={auth_code}"
+        if state:
+            redirect_url += f"&state={state}"
+        
+        logger.info(f"Redirecting to: {redirect_url}")
+        return RedirectResponse(url=redirect_url)
+        
+    except Exception as e:
+        logger.error(f"OAuth authorize error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"OAuth authorization failed: {str(e)}")
 
 
 @app.post("/oauth/token")
