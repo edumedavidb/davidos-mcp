@@ -302,15 +302,17 @@ async def oauth_userinfo(request: Request):
     
     access_token = auth_header[7:]
     
-    if access_token not in _access_tokens:
+    # Validate token using protocol module
+    token_data = oauth_protocol.validate_access_token(access_token)
+    
+    if not token_data:
         raise HTTPException(status_code=401, detail="Invalid access token")
     
-    token_data = _access_tokens[access_token]
     user = token_data['user']
     
     return {
-        "sub": user['email'],
-        "email": user['email'],
+        "sub": user.get('email'),
+        "email": user.get('email'),
         "email_verified": True,
         "name": user.get('name', ''),
         "picture": user.get('picture', '')

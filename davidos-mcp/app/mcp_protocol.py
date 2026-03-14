@@ -60,6 +60,23 @@ def register_resource(uri: str, name: str, description: str, mime_type: str, con
     logger.info(f"Registered resource: {uri}")
 
 
+def initialize(params: Dict[str, Any]) -> Dict[str, Any]:
+    """MCP initialize method - required handshake."""
+    logger.info(f"MCP session initialized with params: {params}")
+    return {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {
+            "tools": {},
+            "resources": {},
+            "prompts": {}
+        },
+        "serverInfo": {
+            "name": "DavidOS MCP Server",
+            "version": "1.0.0"
+        }
+    }
+
+
 def list_tools() -> Dict[str, List[Dict[str, Any]]]:
     """MCP list_tools method."""
     tools = []
@@ -173,7 +190,10 @@ def get_prompt(name: str) -> Dict[str, Any]:
 def handle_mcp_request(method: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """Route MCP protocol requests to appropriate handlers."""
     
-    if method == "list_tools":
+    if method == "initialize":
+        return initialize(params)
+    
+    elif method == "list_tools":
         return list_tools()
     
     elif method == "call_tool":
