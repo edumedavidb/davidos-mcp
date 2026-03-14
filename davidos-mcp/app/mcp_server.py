@@ -264,8 +264,7 @@ async def oauth_token(request: Request):
         client_secret = request.query_params.get("client_secret", "")
         code_verifier = request.query_params.get("code_verifier", "")
     
-    logger.info(f"OAuth token request - grant_type: {grant_type}, client_id: {client_id}, code: {code[:10]}..., code_verifier present: {bool(code_verifier)}")
-    logger.info(f"Available auth codes: {list(_auth_codes.keys())[:3]}...")
+    logger.info(f"OAuth token request - grant_type: {grant_type}, client_id: {client_id}, code: {code[:10] if code else 'none'}..., code_verifier present: {bool(code_verifier)}")
     
     # Accept any client_id for now (can restrict later)
     # if client_id != CHATGPT_CLIENT_ID:
