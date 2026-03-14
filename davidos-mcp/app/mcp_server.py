@@ -143,7 +143,7 @@ async def oauth_authorization_server_metadata():
         "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
-        "client_id": CHATGPT_CLIENT_ID
+        "client_id_metadata_document_supported": True
     }
 
 
@@ -162,7 +162,7 @@ async def openid_configuration():
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
         "claims_supported": ["sub", "email", "email_verified", "name", "picture"],
-        "client_id": CHATGPT_CLIENT_ID
+        "client_id_metadata_document_supported": True
     }
 
 
