@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DavidOS MCP Protocol Tester</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #1a1a1a;
+        }
+        .section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .tool-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .tool-card {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+        .tool-name {
+            font-weight: 600;
+            color: #007bff;
+            margin-bottom: 4px;
+        }
+        .tool-desc {
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 DavidOS MCP Protocol Tester</h1>
+    
+    <div class="section">
+        <h2>Authentication Status</h2>
+        <div id="auth-status" class="status info">Checking authentication...</div>
+        <button onclick="window.location.href='https://davidos-mcp-production.up.railway.app/login'">
+            Login with Google
+        </button>
+        <button onclick="checkAuth()">Refresh Status</button>
+    </div>
+
+    <div class="section">
+        <h2>MCP Protocol Tests</h2>
+        
+        <h3>1. List Tools</h3>
+        <button onclick="testListTools()">List Available Tools</button>
+        <div id="tools-output" class="output" style="display:none;"></div>
+        
+        <h3>2. List Resources (Widgets)</h3>
+        <button onclick="testListResources()">List Widget Resources</button>
+        <div id="resources-output" class="output" style="display:none;"></div>
+        
+        <h3>3. Call Tool: get_context</h3>
+        <button onclick="testGetContext()">Get Strategic Context</button>
+        <div id="context-output" class="output" style="display:none;"></div>
+        
+        <h3>4. Call Tool: search_memory</h3>
+        <input type="text" id="search-query" placeholder="Enter search query..." value="compliance">
+        <button onclick="testSearch()">Search DavidOS</button>
+        <div id="search-output" class="output" style="display:none;"></div>
+        
+        <h3>5. Read Widget Resource</h3>
+        <button onclick="testReadResource('ui://widget/decision')">Read Decision Widget</button>
+        <button onclick="testReadResource('ui://widget/context')">Read Context Widget</button>
+        <div id="resource-output" class="output" style="display:none;"></div>
+        
+        <h3>6. Call Tool: append_decision</h3>
+        <button onclick="testAppendDecision()">Record Test Decision</button>
+        <div id="decision-output" class="output" style="display:none;"></div>
+    </div>
+
+    <script>
+        const BASE_URL = 'https://davidos-mcp-production.up.railway.app';
+
+        async function mcpRequest(method, params = {}) {
+            const response = await fetch(`${BASE_URL}/mcp`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({ method, params })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+            }
+            
+            return response.json();
+        }
+
+        async function checkAuth() {
+            const statusDiv = document.getElementById('auth-status');
+            try {
+                const response = await fetch(`${BASE_URL}/me`, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = `✅ Authenticated as: <strong>${data.email}</strong>`;
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.innerHTML = '❌ Not authenticated. Please login.';
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        async function testListTools() {
+            const output = document.getElementById('tools-output');
+            output.style.display = 'block';
+            output.textContent = 'Loading...';
+            
+            try {
+                const data = await mcpRequest('list_tools');
+                output.textContent = JSON.stringify(data, null, 2);
+                
+                // Also show a nice formatted view
+                if (data.tools) {
+                    const toolsHtml = data.tools.map(tool => `
+                        <div class="tool-card">
+                            <div class="tool-name">${tool.name}</div>
+                            <div class="tool-desc">${tool.description}</div>
+                        </div>
+                    `).join('');
+                    
+                    const container = document.createElement('div');
+                    container.className = 'tool-list';
+                    container.innerHTML = toolsHtml;
+                    output.parentElement.insertBefore(container, output);
+                }
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testListResources() {
+            const output = document.getElementById('resources-output');
+            output.style.display = 'block';
+            output.textContent = 'Loading...';
+            
+            try {
+                const data = await mcpRequest('list_resources');
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testGetContext() {
+            const output = document.getElementById('context-output');
+            output.style.display = 'block';
+            output.textContent = 'Loading...';
+            
+            try {
+                const data = await mcpRequest('call_tool', {
+                    name: 'get_context',
+                    arguments: {}
+                });
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testSearch() {
+            const query = document.getElementById('search-query').value;
+            const output = document.getElementById('search-output');
+            output.style.display = 'block';
+            output.textContent = 'Searching...';
+            
+            try {
+                const data = await mcpRequest('call_tool', {
+                    name: 'search_memory',
+                    arguments: { query }
+                });
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testReadResource(uri) {
+            const output = document.getElementById('resource-output');
+            output.style.display = 'block';
+            output.textContent = 'Loading...';
+            
+            try {
+                const data = await mcpRequest('read_resource', { uri });
+                output.textContent = `URI: ${data.uri}\nMIME Type: ${data.mimeType}\n\nHTML Content:\n${data.text}`;
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testAppendDecision() {
+            const output = document.getElementById('decision-output');
+            output.style.display = 'block';
+            output.textContent = 'Recording decision...';
+            
+            try {
+                const data = await mcpRequest('call_tool', {
+                    name: 'append_decision',
+                    arguments: {
+                        context: 'Testing MCP protocol implementation',
+                        decision: 'Implement proper MCP server for ChatGPT Apps',
+                        options_considered: [
+                            'Custom GPT with Actions',
+                            'TypeScript MCP server',
+                            'Python MCP server'
+                        ],
+                        implications: 'Enables ChatGPT to directly access and modify DavidOS strategic context'
+                    }
+                });
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Check auth on page load
+        checkAuth();
+    </script>
+</body>
+</html>

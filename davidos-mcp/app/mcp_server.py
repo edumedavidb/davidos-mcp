@@ -86,6 +86,26 @@ async def health_check():
     return {"status": "ok", "server": "davidos-mcp", "version": "1.0.0"}
 
 
+@app.get("/test")
+async def test_page():
+    """Serve MCP protocol test page."""
+    from fastapi.responses import HTMLResponse
+    
+    test_html_path = Path(__file__).parent.parent / "test_mcp.html"
+    
+    if test_html_path.exists():
+        with open(test_html_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+            # Update BASE_URL to use relative path
+            html_content = html_content.replace(
+                "const BASE_URL = 'https://davidos-mcp-production.up.railway.app';",
+                "const BASE_URL = window.location.origin;"
+            )
+            return HTMLResponse(content=html_content)
+    
+    return HTMLResponse(content="<html><body>Test page not found</body></html>")
+
+
 @app.post("/mcp")
 async def mcp_endpoint(request: Request, user: dict = Depends(auth.get_current_user)):
     """MCP protocol endpoint - handles all MCP method calls."""
