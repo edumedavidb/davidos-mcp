@@ -308,6 +308,9 @@ async def oauth_token(request: Request):
             'client_id': client_id
         }
         
+        logger.info(f"Created access token for user {auth_data['user']['email']}: {access_token[:10]}...")
+        logger.info(f"Total access tokens in memory: {len(_access_tokens)}")
+        
         return {
             "access_token": access_token,
             "token_type": "Bearer",
@@ -553,15 +556,21 @@ async def mcp_endpoint(request: Request):
     
     if auth_header.startswith('Bearer '):
         access_token = auth_header[7:]
+        logger.info(f"MCP request with Bearer token: {access_token[:10]}...")
+        logger.info(f"Available tokens in memory: {len(_access_tokens)}")
         if access_token in _access_tokens:
             token_data = _access_tokens[access_token]
             user = token_data['user']
+            logger.info(f"Token validated for user: {user['email']}")
+        else:
+            logger.warning(f"Token not found in _access_tokens. Token: {access_token[:10]}..., Available: {list(_access_tokens.keys())[:3]}")
     
     # Fall back to session auth
     if not user:
         user = request.session.get('user')
     
     if not user:
+        logger.warning(f"MCP request rejected - no valid user. Auth header present: {bool(auth_header)}, Session user: {bool(request.session.get('user'))}")
         return JSONResponse(
             status_code=401,
             content={"detail": "Not authenticated"},
