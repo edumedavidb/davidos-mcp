@@ -14,6 +14,10 @@ COPY davidos-mcp/pyproject.toml .
 # Copy DavidOS content
 COPY davidos-mcp/davidos/ ./davidos/
 
+# Copy widget components and test page
+COPY davidos-mcp/components/ ./components/
+COPY test_mcp.html .
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
