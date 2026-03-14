@@ -142,7 +142,8 @@ async def oauth_authorization_server_metadata():
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
         "subject_types_supported": ["public"],
-        "id_token_signing_alg_values_supported": ["RS256"]
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "client_id": CHATGPT_CLIENT_ID
     }
 
 
@@ -160,7 +161,8 @@ async def openid_configuration():
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
-        "claims_supported": ["sub", "email", "email_verified", "name", "picture"]
+        "claims_supported": ["sub", "email", "email_verified", "name", "picture"],
+        "client_id": CHATGPT_CLIENT_ID
     }
 
 
