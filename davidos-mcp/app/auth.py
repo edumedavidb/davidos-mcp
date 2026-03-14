@@ -109,6 +109,34 @@ async def auth_callback(request: Request):
     
     logger.info(f"User authenticated: {email}")
     
+    # Check if this is part of a ChatGPT OAuth flow
+    oauth_params = request.session.get('oauth_params')
+    if oauth_params:
+        # Clear OAuth params
+        request.session.pop('oauth_params')
+        
+        # Generate authorization code
+        import secrets
+        auth_code = secrets.token_urlsafe(32)
+        
+        # Import the auth codes dict from mcp_server
+        from . import mcp_server
+        mcp_server._auth_codes[auth_code] = {
+            'user': request.session['user'],
+            'client_id': oauth_params['client_id'],
+            'redirect_uri': oauth_params['redirect_uri'],
+            'scope': oauth_params['scope'],
+            'code_challenge': oauth_params.get('code_challenge', '')
+        }
+        
+        # Redirect back to ChatGPT
+        redirect_url = f"{oauth_params['redirect_uri']}?code={auth_code}"
+        if oauth_params.get('state'):
+            redirect_url += f"&state={oauth_params['state']}"
+        
+        logger.info(f"Redirecting to ChatGPT: {redirect_url}")
+        return RedirectResponse(url=redirect_url)
+    
     # Redirect to home or dashboard
     return RedirectResponse(url='/')
 

@@ -16,6 +16,14 @@ from . import auth
 from . import mcp_protocol
 from . import mcp_init
 
+# OAuth state storage (in production, use Redis or database)
+_auth_codes = {}
+_access_tokens = {}
+
+# OAuth client credentials for ChatGPT
+CHATGPT_CLIENT_ID = "davidos-mcp-chatgpt-client"
+CHATGPT_CLIENT_SECRET = "davidos-mcp-secret-2026-change-in-production"
+
 # Setup logging
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper()),
@@ -104,6 +112,211 @@ async def test_page():
             return HTMLResponse(content=html_content)
     
     return HTMLResponse(content="<html><body>Test page not found</body></html>")
+
+
+# === OAuth 2.1 + OIDC Discovery Endpoints ===
+
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_protected_resource_metadata():
+    """MCP OAuth 2.1 Protected Resource Metadata (RFC 9728)."""
+    return {
+        "resource": "https://davidos-mcp-production.up.railway.app/mcp",
+        "authorization_servers": ["https://davidos-mcp-production.up.railway.app"],
+        "scopes_supported": ["mcp:tools", "mcp:resources", "mcp:prompts", "openid", "email", "profile"],
+        "bearer_methods_supported": ["header"]
+    }
+
+
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server_metadata():
+    """OAuth 2.0 Authorization Server Metadata (RFC 8414)."""
+    return {
+        "issuer": "https://davidos-mcp-production.up.railway.app",
+        "authorization_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/authorize",
+        "token_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/token",
+        "userinfo_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/userinfo",
+        "jwks_uri": "https://davidos-mcp-production.up.railway.app/.well-known/jwks.json",
+        "scopes_supported": ["mcp:tools", "mcp:resources", "mcp:prompts", "openid", "email", "profile"],
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic", "none"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"]
+    }
+
+
+@app.get("/.well-known/openid-configuration")
+async def openid_configuration():
+    """OpenID Connect Discovery (OIDC)."""
+    return {
+        "issuer": "https://davidos-mcp-production.up.railway.app",
+        "authorization_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/authorize",
+        "token_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/token",
+        "userinfo_endpoint": "https://davidos-mcp-production.up.railway.app/oauth/userinfo",
+        "jwks_uri": "https://davidos-mcp-production.up.railway.app/.well-known/jwks.json",
+        "scopes_supported": ["openid", "email", "profile", "mcp:tools", "mcp:resources", "mcp:prompts"],
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "claims_supported": ["sub", "email", "email_verified", "name", "picture"]
+    }
+
+
+@app.get("/.well-known/jwks.json")
+async def jwks():
+    """JSON Web Key Set (for OIDC)."""
+    return {"keys": []}
+
+
+# === OAuth Flow Endpoints ===
+
+@app.get("/oauth/authorize")
+async def oauth_authorize(
+    request: Request,
+    response_type: str,
+    client_id: str,
+    redirect_uri: str,
+    scope: str = "",
+    state: str = "",
+    code_challenge: str = "",
+    code_challenge_method: str = ""
+):
+    """OAuth authorization endpoint - redirects to Google login."""
+    import secrets
+    
+    if client_id != CHATGPT_CLIENT_ID:
+        raise HTTPException(status_code=400, detail="Invalid client_id")
+    
+    user = request.session.get('user')
+    
+    if not user:
+        request.session['oauth_params'] = {
+            'response_type': response_type,
+            'client_id': client_id,
+            'redirect_uri': redirect_uri,
+            'scope': scope,
+            'state': state,
+            'code_challenge': code_challenge,
+            'code_challenge_method': code_challenge_method
+        }
+        return await auth.login(request)
+    
+    auth_code = secrets.token_urlsafe(32)
+    
+    _auth_codes[auth_code] = {
+        'user': user,
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': scope,
+        'code_challenge': code_challenge
+    }
+    
+    redirect_url = f"{redirect_uri}?code={auth_code}"
+    if state:
+        redirect_url += f"&state={state}"
+    
+    return RedirectResponse(url=redirect_url)
+
+
+@app.post("/oauth/token")
+async def oauth_token(
+    request: Request,
+    grant_type: str = "",
+    code: str = "",
+    redirect_uri: str = "",
+    client_id: str = "",
+    client_secret: str = "",
+    code_verifier: str = ""
+):
+    """OAuth token endpoint."""
+    import secrets
+    import hashlib
+    import base64
+    
+    if client_id != CHATGPT_CLIENT_ID:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "invalid_client", "error_description": "Invalid client credentials"}
+        )
+    
+    if client_secret and client_secret != CHATGPT_CLIENT_SECRET:
+        return JSONResponse(
+            status_code=401,
+            content={"error": "invalid_client", "error_description": "Invalid client credentials"}
+        )
+    
+    if grant_type == "authorization_code":
+        if code not in _auth_codes:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "invalid_grant", "error_description": "Invalid authorization code"}
+            )
+        
+        auth_data = _auth_codes.pop(code)
+        
+        if auth_data.get('code_challenge'):
+            if not code_verifier:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "invalid_request", "error_description": "code_verifier required"}
+                )
+            
+            verifier_hash = hashlib.sha256(code_verifier.encode()).digest()
+            verifier_challenge = base64.urlsafe_b64encode(verifier_hash).decode().rstrip('=')
+            
+            if verifier_challenge != auth_data['code_challenge']:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "invalid_grant", "error_description": "Invalid code_verifier"}
+                )
+        
+        access_token = secrets.token_urlsafe(32)
+        refresh_token = secrets.token_urlsafe(32)
+        
+        _access_tokens[access_token] = {
+            'user': auth_data['user'],
+            'scope': auth_data['scope'],
+            'client_id': client_id
+        }
+        
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": refresh_token,
+            "scope": auth_data['scope']
+        }
+    
+    return JSONResponse(
+        status_code=400,
+        content={"error": "unsupported_grant_type"}
+    )
+
+
+@app.get("/oauth/userinfo")
+async def oauth_userinfo(request: Request):
+    """OIDC UserInfo endpoint."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    
+    access_token = auth_header[7:]
+    
+    if access_token not in _access_tokens:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    
+    token_data = _access_tokens[access_token]
+    user = token_data['user']
+    
+    return {
+        "sub": user['email'],
+        "email": user['email'],
+        "email_verified": True,
+        "name": user.get('name', ''),
+        "picture": user.get('picture', '')
+    }
 
 
 @app.get("/privacy")
@@ -305,8 +518,31 @@ async def terms_of_service():
 
 
 @app.post("/mcp")
-async def mcp_endpoint(request: Request, user: dict = Depends(auth.get_current_user)):
+async def mcp_endpoint(request: Request):
     """MCP protocol endpoint - handles all MCP method calls."""
+    # Check for Bearer token first (OAuth flow)
+    auth_header = request.headers.get('Authorization', '')
+    user = None
+    
+    if auth_header.startswith('Bearer '):
+        access_token = auth_header[7:]
+        if access_token in _access_tokens:
+            token_data = _access_tokens[access_token]
+            user = token_data['user']
+    
+    # Fall back to session auth
+    if not user:
+        user = request.session.get('user')
+    
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Not authenticated"},
+            headers={
+                "WWW-Authenticate": 'Bearer realm="mcp", resource_metadata="https://davidos-mcp-production.up.railway.app/.well-known/oauth-protected-resource"'
+            }
+        )
+    
     try:
         payload = await request.json()
         
