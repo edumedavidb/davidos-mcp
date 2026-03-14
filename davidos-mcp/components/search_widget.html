@@ -52,10 +52,16 @@
   <div id="search-widget"></div>
   
   <script>
-    const data = window.openai && window.openai.toolOutput && window.openai.toolOutput.structuredContent;
-    
-    if (data) {
+    function render() {
+      const data = window.openai?.toolOutput?.structuredContent;
+      
+      if (!data) {
+        console.warn('Search widget: No data available yet');
+        return;
+      }
+      
       const widget = document.getElementById('search-widget');
+      if (!widget) return;
       
       let html = '<div class="search-card">';
       html += '<h2>Search Results</h2>';
@@ -88,6 +94,12 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+    
+    // Render on load and retry if data not ready
+    render();
+    if (!window.openai?.toolOutput) {
+      setTimeout(render, 100);
     }
   </script>
 </body>

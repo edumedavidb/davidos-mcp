@@ -11,7 +11,7 @@ logger = logging.getLogger("davidos-mcp")
 def initialize_mcp():
     """Register all MCP tools and resources."""
     
-    # Register tools
+    # Register read-only tools with versioned widget URIs
     mcp_protocol.register_tool(
         name="get_context",
         description="Retrieve the strategic context from context.md",
@@ -21,7 +21,8 @@ def initialize_mcp():
             "required": []
         },
         handler=tools.get_context,
-        output_template="ui://widget/context"
+        output_template="ui://widget/context/v1",
+        read_only=True
     )
     
     mcp_protocol.register_tool(
@@ -38,7 +39,8 @@ def initialize_mcp():
             "required": ["path"]
         },
         handler=tools.read_file,
-        output_template="ui://widget/file"
+        output_template="ui://widget/file/v1",
+        read_only=True
     )
     
     mcp_protocol.register_tool(
@@ -55,9 +57,11 @@ def initialize_mcp():
             "required": ["query"]
         },
         handler=tools.search_memory,
-        output_template="ui://widget/search"
+        output_template="ui://widget/search/v1",
+        read_only=True
     )
     
+    # Register write tools with versioned widget URIs (no read_only flag)
     mcp_protocol.register_tool(
         name="append_decision",
         description="Record a strategic decision in the decision log",
@@ -89,7 +93,7 @@ def initialize_mcp():
             "required": ["context", "decision"]
         },
         handler=tools.append_decision,
-        output_template="ui://widget/decision"
+        output_template="ui://widget/decision/v1"
     )
     
     mcp_protocol.register_tool(
@@ -110,7 +114,7 @@ def initialize_mcp():
             "required": ["question"]
         },
         handler=tools.append_question,
-        output_template="ui://widget/question"
+        output_template="ui://widget/question/v1"
     )
     
     mcp_protocol.register_tool(
@@ -157,9 +161,9 @@ def initialize_mcp():
         handler=tools.update_section
     )
     
-    # Register widget resources
+    # Register widget resources with versioned URIs
     mcp_protocol.register_resource(
-        uri="ui://widget/decision",
+        uri="ui://widget/decision/v1",
         name="Decision Widget",
         description="Renders decision summaries",
         mime_type="text/html;profile=mcp-app",
@@ -167,7 +171,7 @@ def initialize_mcp():
     )
     
     mcp_protocol.register_resource(
-        uri="ui://widget/context",
+        uri="ui://widget/context/v1",
         name="Context Widget",
         description="Displays strategic context",
         mime_type="text/html;profile=mcp-app",
@@ -175,7 +179,7 @@ def initialize_mcp():
     )
     
     mcp_protocol.register_resource(
-        uri="ui://widget/question",
+        uri="ui://widget/question/v1",
         name="Question Widget",
         description="Shows open questions",
         mime_type="text/html;profile=mcp-app",
@@ -183,7 +187,7 @@ def initialize_mcp():
     )
     
     mcp_protocol.register_resource(
-        uri="ui://widget/search",
+        uri="ui://widget/search/v1",
         name="Search Widget",
         description="Displays search results",
         mime_type="text/html;profile=mcp-app",
@@ -191,7 +195,7 @@ def initialize_mcp():
     )
     
     mcp_protocol.register_resource(
-        uri="ui://widget/file",
+        uri="ui://widget/file/v1",
         name="File Widget",
         description="Shows file content",
         mime_type="text/html;profile=mcp-app",

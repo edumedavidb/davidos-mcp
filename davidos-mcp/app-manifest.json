@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "name": "DavidOS Strategic Context",
+  "description": "Access and manage strategic product context, decisions, and open questions from DavidOS",
+  "version": "1.0.0",
+  "author": {
+    "name": "David Barnes",
+    "email": "david.barnes@edume.com"
+  },
+  "mcp_server": {
+    "url": "https://davidos-mcp-production.up.railway.app/mcp",
+    "transport": "http",
+    "authentication": {
+      "type": "oauth2",
+      "authorization_url": "https://davidos-mcp-production.up.railway.app/login",
+      "token_url": "https://davidos-mcp-production.up.railway.app/auth/google/callback",
+      "scopes": ["openid", "email", "profile"]
+    }
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": true,
+    "prompts": false
+  },
+  "privacy_policy_url": "https://davidos-mcp-production.up.railway.app/privacy",
+  "terms_of_service_url": "https://davidos-mcp-production.up.railway.app/terms",
+  "support_url": "https://github.com/edumedavidb/davidos-mcp/issues",
+  "categories": ["productivity", "knowledge_management", "decision_support"],
+  "tags": ["strategic-planning", "product-management", "decision-log", "knowledge-base"]
+}

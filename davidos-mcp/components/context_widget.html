@@ -31,10 +31,16 @@
   <div id="context-widget"></div>
   
   <script>
-    const data = window.openai && window.openai.toolOutput && window.openai.toolOutput.structuredContent;
-    
-    if (data && data.context) {
+    function render() {
+      const data = window.openai?.toolOutput?.structuredContent;
+      
+      if (!data || !data.context) {
+        console.warn('Context widget: No data available yet');
+        return;
+      }
+      
       const widget = document.getElementById('context-widget');
+      if (!widget) return;
       
       let html = '<div class="context-card">';
       html += '<h2>Strategic Context</h2>';
@@ -48,6 +54,12 @@
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+    
+    // Render on load and retry if data not ready
+    render();
+    if (!window.openai?.toolOutput) {
+      setTimeout(render, 100);
     }
   </script>
 </body>
