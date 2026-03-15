@@ -13,9 +13,8 @@ import uvicorn
 from .config import settings
 from .file_manager import FileManager, FileManagerError, PathTraversalError, FileAccessError
 from . import auth
-from . import mcp_protocol
-from . import mcp_init
 from . import oauth_protocol
+from . import mcp_fastmcp
 
 # OAuth client credentials for ChatGPT
 CHATGPT_CLIENT_ID = "davidos-mcp-chatgpt-client"
@@ -44,8 +43,8 @@ app.add_middleware(
     https_only=True  # Require HTTPS
 )
 
-# Initialize MCP tools and resources
-mcp_init.initialize_mcp()
+# Mount FastMCP server at /mcp endpoint
+app.mount("/mcp", mcp_fastmcp.mcp.streamable_http_app())
 
 
 # === Authentication Endpoints ===
@@ -517,67 +516,14 @@ async def terms_of_service():
     return HTMLResponse(content=html)
 
 
-@app.post("/")
-async def mcp_endpoint_root(request: Request):
-    """MCP protocol endpoint at root path (ChatGPT standard)."""
-    return await handle_mcp_request(request)
-
-
-@app.post("/mcp")
-async def mcp_endpoint(request: Request):
-    """MCP protocol endpoint (legacy path)."""
-    return await handle_mcp_request(request)
-
-
-async def handle_mcp_request(request: Request):
-    """MCP protocol endpoint - handles all MCP method calls."""
-    # Check for Bearer token first (OAuth flow)
-    auth_header = request.headers.get('Authorization', '')
-    user = None
-    
-    if auth_header.startswith('Bearer '):
-        access_token = auth_header[7:]
-        
-        # Validate token using protocol module - STEP 5
-        token_data = oauth_protocol.validate_access_token(access_token)
-        
-        if token_data:
-            user = token_data['user']
-        else:
-            logger.warning(f"Token validation failed: {access_token[:10]}...")
-    
-    # Fall back to session auth
-    if not user:
-        user = request.session.get('user')
-    
-    if not user:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Not authenticated"},
-            headers={
-                "WWW-Authenticate": f'Bearer realm="mcp", resource_metadata="{oauth_protocol.BASE_URL}/.well-known/oauth-protected-resource"'
-            }
-        )
-    
-    try:
-        payload = await request.json()
-        
-        method = payload.get("method")
-        params = payload.get("params", {})
-        
-        logger.info(f"MCP request from {user['email']}: method={method}")
-        
-        # Route to MCP protocol handler
-        result = mcp_protocol.handle_mcp_request(method, params)
-        
-        return result
-        
-    except ValueError as e:
-        logger.error(f"MCP protocol error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"MCP endpoint error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# === MCP Protocol Endpoint ===
+# FastMCP SDK handles the /mcp endpoint automatically via mount above
+# The SDK provides proper protocol implementation including:
+# - initialize handshake
+# - list_tools
+# - call_tool
+# - Session management
+# - Stateless HTTP transport
 
 
 # === Protected MCP Endpoints ===
